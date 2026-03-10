@@ -24,6 +24,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CalendarClock,
+  Clock,
 } from "lucide-react";
 import {
   BarChart,
@@ -87,6 +88,16 @@ export default function CalendarPage({ tasks }) {
   const [selectedDate, setSelectedDate] = useState(todayStr);
   const [viewMonth, setViewMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [chartView, setChartView] = useState("Week");
+
+  // ── Upcoming due tasks (future + today, not completed) ──────────────────
+  const upcomingTasks = useMemo(() => {
+    return tasks
+      .filter((t) => t.dueDate && !t.completed && t.dueDate >= todayStr)
+      .sort((a, b) => {
+        if (a.dueDate !== b.dueDate) return a.dueDate.localeCompare(b.dueDate);
+        return (a.dueTime || "").localeCompare(b.dueTime || "");
+      });
+  }, [tasks, todayStr]);
 
   // ── Build maps ──────────────────────────────────────────────────────────
   const completionMap = useMemo(() => {
@@ -261,6 +272,77 @@ export default function CalendarPage({ tasks }) {
           </Card>
         ))}
       </div>
+
+      {/* ── Upcoming Due Tasks ── */}
+      {upcomingTasks.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <CalendarClock size={16} className="text-blue-500" />
+                  Upcoming Due Tasks
+                </CardTitle>
+                <CardDescription>{upcomingTasks.length} pending task{upcomingTasks.length !== 1 ? "s" : ""} scheduled</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="divide-y divide-border">
+              {upcomingTasks.map((task) => {
+                const isToday_ = task.dueDate === todayStr;
+                const dayLabel = isToday_
+                  ? "Today"
+                  : format(parseISO(task.dueDate), "EEE, MMM d");
+                return (
+                  <div
+                    key={task.id}
+                    className="flex items-center gap-3 py-2.5 cursor-pointer hover:bg-muted/40 rounded-lg px-2 -mx-2 transition-colors"
+                    onClick={() => {
+                      setSelectedDate(task.dueDate);
+                      setViewMonth(new Date(parseISO(task.dueDate).getFullYear(), parseISO(task.dueDate).getMonth(), 1));
+                    }}
+                  >
+                    <Circle size={15} className="text-muted-foreground flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{task.title}</p>
+                      {task.description && (
+                        <p className="text-xs text-muted-foreground truncate">{task.description}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {task.dueTime && (
+                        <span className="flex items-center gap-1 text-xs text-blue-500">
+                          <Clock size={11} />
+                          {task.dueTime}
+                        </span>
+                      )}
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          isToday_
+                            ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                            : "bg-blue-500/10 text-blue-600 dark:text-blue-400"
+                        }`}
+                      >
+                        {dayLabel}
+                      </span>
+                      <span
+                        className="text-xs px-1.5 py-0.5 rounded-full font-medium"
+                        style={{
+                          backgroundColor: `${CATEGORY_COLORS[task.category]}20`,
+                          color: CATEGORY_COLORS[task.category],
+                        }}
+                      >
+                        {task.category}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Main interactive area ── */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">

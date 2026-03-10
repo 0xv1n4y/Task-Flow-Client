@@ -244,6 +244,7 @@ function AppShell() {
             >
               {dark ? <Sun size={16} /> : <Moon size={16} />}
             </button>
+            <UserButton />
           </div>
         </header>
 
