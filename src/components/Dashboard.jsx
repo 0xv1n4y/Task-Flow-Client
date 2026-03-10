@@ -15,7 +15,8 @@ import {
   RadialBarChart,
   RadialBar,
 } from "recharts";
-import { format, subDays } from "date-fns";
+import { useState } from "react";
+import { format, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addDays } from "date-fns";
 import {
   CheckCircle2,
   Circle,
@@ -25,9 +26,14 @@ import {
   Target,
   Flame,
   Star,
+  CalendarClock,
+  ChevronDown,
+  X,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "./ui/Card";
 import { Badge } from "./ui/Badge";
+import { Select } from "./ui/Select";
+import { DatePicker } from "./ui/DatePicker";
 
 const CATEGORY_COLORS = {
   Work: "#6366f1",
@@ -84,7 +90,221 @@ function CustomTooltip({ active, payload, label }) {
   return null;
 }
 
-export default function Dashboard({ tasks }) {
+const PERIOD_LABELS = ["All", "Today", "Week", "Month", "Year"];
+
+function getPeriodRange(period) {
+  const today = format(new Date(), "yyyy-MM-dd");
+  const weekStart = format(startOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd");
+  const weekEnd = format(endOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd");
+  const monthStart = format(startOfMonth(new Date()), "yyyy-MM-dd");
+  const monthEnd = format(endOfMonth(new Date()), "yyyy-MM-dd");
+  const year = format(new Date(), "yyyy");
+  return { today, weekStart, weekEnd, monthStart, monthEnd, year };
+}
+
+function inPeriod(task, period) {
+  const ref = task.dueDate || task.createdAt;
+  const { today, weekStart, weekEnd, monthStart, monthEnd, year } = getPeriodRange();
+  if (period === "Today") return ref === today;
+  if (period === "Week") return ref >= weekStart && ref <= weekEnd;
+  if (period === "Month") return ref >= monthStart && ref <= monthEnd;
+  if (period === "Year") return ref.startsWith(year);
+  return true;
+}
+
+function MoveToMenu({ task, onMove, onClose }) {
+  const today = new Date();
+  const [showCustom, setShowCustom] = useState(false);
+  const [customDate, setCustomDate] = useState("");
+
+  const options = [
+    { label: "Today", date: format(today, "yyyy-MM-dd") },
+    { label: "Tomorrow", date: format(addDays(today, 1), "yyyy-MM-dd") },
+    { label: "Next Week", date: format(addDays(today, 7), "yyyy-MM-dd") },
+    { label: "In 2 Weeks", date: format(addDays(today, 14), "yyyy-MM-dd") },
+  ];
+
+  return (
+    <div className={`absolute right-0 top-8 z-20 bg-card border border-border rounded-lg shadow-lg overflow-visible ${showCustom ? "w-72" : "w-48"}`}>
+      <div className="px-3 py-2 border-b border-border flex items-center justify-between">
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Move to</span>
+        <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+          <X size={13} />
+        </button>
+      </div>
+      {options.map((opt) => (
+        <button
+          key={opt.label}
+          onClick={() => { onMove(task, opt.date); onClose(); }}
+          className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-accent text-foreground transition-colors"
+        >
+          <span>{opt.label}</span>
+          <span className="text-xs text-muted-foreground">{opt.date.slice(5).replace("-", "/")}</span>
+        </button>
+      ))}
+      <div className="border-t border-border px-3 py-2">
+        {showCustom ? (
+          <div className="space-y-2">
+            <DatePicker
+              value={customDate}
+              onChange={setCustomDate}
+              placeholder="Pick a date"
+            />
+            <button
+              onClick={() => { if (customDate) { onMove(task, customDate); onClose(); } }}
+              disabled={!customDate}
+              className="w-full text-xs bg-primary text-primary-foreground py-1.5 rounded-md disabled:opacity-50 transition-opacity"
+            >
+              Set date
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowCustom(true)}
+            className="w-full text-left text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+          >
+            <CalendarClock size={12} /> Custom date…
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PendingTasksTable({ tasks, onUpdate, onToggle }) {
+  const [period, setPeriod] = useState("All");
+  const [openMenuId, setOpenMenuId] = useState(null);
+
+  const pending = tasks.filter((t) => !t.completed);
+  const filtered = pending.filter((t) => inPeriod(t, period));
+
+  const handleMove = (task, newDueDate) => {
+    onUpdate(task.id, {
+      title: task.title,
+      description: task.description || "",
+      category: task.category,
+      priority: task.priority,
+      dueDate: newDueDate,
+      dueTime: task.dueTime || null,
+    });
+  };
+
+  const CATEGORY_COLORS = {
+    Work: { bg: "bg-indigo-100 dark:bg-indigo-900/30", text: "text-indigo-700 dark:text-indigo-400" },
+    Health: { bg: "bg-green-100 dark:bg-green-900/30", text: "text-green-700 dark:text-green-400" },
+    Learning: { bg: "bg-amber-100 dark:bg-amber-900/30", text: "text-amber-700 dark:text-amber-400" },
+    Personal: { bg: "bg-pink-100 dark:bg-pink-900/30", text: "text-pink-700 dark:text-pink-400" },
+  };
+
+  const PRIORITY_DOT = { high: "bg-red-500", medium: "bg-yellow-500", low: "bg-green-500" };
+
+  const today = format(new Date(), "yyyy-MM-dd");
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-start justify-between flex-wrap gap-3">
+          <div>
+            <CardTitle>Pending Tasks</CardTitle>
+            <CardDescription>
+              {filtered.length} task{filtered.length !== 1 ? "s" : ""} pending
+              {period !== "All" && ` · ${period.toLowerCase() === "today" ? "today" : `this ${period.toLowerCase()}`}`}
+            </CardDescription>
+          </div>
+          {/* Period filter */}
+          <div className="flex rounded-lg bg-muted p-0.5 gap-0.5">
+            {PERIOD_LABELS.map((p) => (
+              <button
+                key={p}
+                onClick={() => setPeriod(p)}
+                className={`px-3 py-1 text-xs rounded-md font-medium transition-all ${
+                  period === p
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        {filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
+            <CheckCircle2 size={32} className="opacity-20" />
+            <p className="text-sm">No pending tasks {period !== "All" ? `for ${period.toLowerCase() === "today" ? "today" : `this ${period.toLowerCase()}`}` : ""}</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-border">
+            {filtered.map((task) => {
+              const cat = CATEGORY_COLORS[task.category] || CATEGORY_COLORS.Work;
+              const isOverdue = task.dueDate && task.dueDate < today;
+              const isDueToday = task.dueDate === today;
+              return (
+                <div
+                  key={task.id}
+                  className="flex items-center gap-3 px-6 py-3 hover:bg-muted/30 transition-colors"
+                >
+                  {/* Toggle */}
+                  <button
+                    onClick={() => onToggle(task.id)}
+                    className="flex-shrink-0 hover:scale-110 transition-transform"
+                    aria-label="Mark complete"
+                  >
+                    <Circle size={18} className="text-muted-foreground hover:text-primary" />
+                  </button>
+
+                  {/* Title + meta */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{task.title}</p>
+                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                      <span className={`inline-flex text-xs px-1.5 py-0.5 rounded-full font-medium ${cat.bg} ${cat.text}`}>
+                        {task.category}
+                      </span>
+                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${PRIORITY_DOT[task.priority]}`} title={`${task.priority} priority`} />
+                      {task.dueDate && (
+                        <span className={`flex items-center gap-1 text-xs ${isOverdue ? "text-red-500 font-medium" : isDueToday ? "text-amber-500 font-medium" : "text-muted-foreground"}`}>
+                          <CalendarClock size={11} />
+                          {isDueToday ? "Today" : isOverdue ? `Overdue · ${task.dueDate}` : task.dueDate}
+                          {task.dueTime && ` at ${task.dueTime}`}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Created date (desktop only) */}
+                  <span className="hidden sm:block text-xs text-muted-foreground flex-shrink-0">
+                    {task.createdAt}
+                  </span>
+
+                  {/* Move to button */}
+                  <div className="relative flex-shrink-0">
+                    <button
+                      onClick={() => setOpenMenuId(openMenuId === task.id ? null : task.id)}
+                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground border border-border rounded-md px-2 py-1 hover:bg-accent transition-colors"
+                    >
+                      Move <ChevronDown size={11} />
+                    </button>
+                    {openMenuId === task.id && (
+                      <MoveToMenu
+                        task={task}
+                        onMove={handleMove}
+                        onClose={() => setOpenMenuId(null)}
+                      />
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function Dashboard({ tasks, onUpdate, onToggle }) {
   // Today's stats
   const today = format(new Date(), "yyyy-MM-dd");
   const todayTasks = tasks.filter((t) => t.createdAt === today);
@@ -453,6 +673,11 @@ export default function Dashboard({ tasks }) {
           </div>
         </CardContent>
       </Card>
+
+      {/* Pending Tasks Table */}
+      {onUpdate && onToggle && (
+        <PendingTasksTable tasks={tasks} onUpdate={onUpdate} onToggle={onToggle} />
+      )}
     </div>
   );
 }

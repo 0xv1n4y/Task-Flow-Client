@@ -23,6 +23,7 @@ import {
   Flame,
   ChevronLeft,
   ChevronRight,
+  CalendarClock,
 } from "lucide-react";
 import {
   BarChart,
@@ -96,6 +97,19 @@ export default function CalendarPage({ tasks }) {
     return map;
   }, [tasks]);
 
+  // Tasks grouped by their dueDate (for the day detail panel)
+  const dueDateMap = useMemo(() => {
+    const map = {};
+    tasks.forEach((t) => {
+      if (t.dueDate) {
+        if (!map[t.dueDate]) map[t.dueDate] = [];
+        map[t.dueDate].push(t);
+      }
+    });
+    return map;
+  }, [tasks]);
+
+  // Tasks without a due date, grouped by createdAt (fallback for non-due tasks)
   const createdMap = useMemo(() => {
     const map = {};
     tasks.forEach((t) => {
@@ -107,7 +121,11 @@ export default function CalendarPage({ tasks }) {
 
   // ── Selected date derived data ───────────────────────────────────────────
   const selDate = parseISO(selectedDate);
-  const selDayTasks = createdMap[selectedDate] || [];
+  const isFutureSelected = selDate > today;
+  // For future dates show due tasks; for past/today show both due tasks and created tasks
+  const selDayTasks = isFutureSelected
+    ? (dueDateMap[selectedDate] || [])
+    : [...new Set([...(dueDateMap[selectedDate] || []), ...(createdMap[selectedDate] || [])])];
   const selDayCompleted = selDayTasks.filter((t) => t.completed).length;
 
   // week of selected date
@@ -209,9 +227,7 @@ export default function CalendarPage({ tasks }) {
   };
 
   const handleCalDayClick = (d) => {
-    const ds = format(d, "yyyy-MM-dd");
-    if (d > today) return;
-    setSelectedDate(ds);
+    setSelectedDate(format(d, "yyyy-MM-dd"));
   };
 
   return (
@@ -269,8 +285,7 @@ export default function CalendarPage({ tasks }) {
                 </button>
                 <button
                   onClick={() => setViewMonth((m) => addMonths(m, 1))}
-                  disabled={viewMonth >= new Date(today.getFullYear(), today.getMonth(), 1)}
-                  className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
                 >
                   <ChevronRight size={16} />
                 </button>
@@ -291,6 +306,7 @@ export default function CalendarPage({ tasks }) {
               {gridDays.map((d) => {
                 const ds = format(d, "yyyy-MM-dd");
                 const count = completionMap[ds] || 0;
+                const dueCount = (dueDateMap[ds] || []).length;
                 const isSelected = ds === selectedDate;
                 const isThisMonth = isSameMonth(d, viewMonth);
                 const isToday_ = ds === todayStr;
@@ -299,23 +315,26 @@ export default function CalendarPage({ tasks }) {
                   <button
                     key={ds}
                     onClick={() => handleCalDayClick(d)}
-                    disabled={isFuture}
                     className={[
-                      "relative aspect-square flex flex-col items-center justify-center rounded-md text-xs transition-all",
-                      !isThisMonth ? "opacity-25" : "",
-                      isFuture ? "cursor-not-allowed opacity-20" : "cursor-pointer",
+                      "relative aspect-square flex flex-col items-center justify-center rounded-md text-xs transition-all cursor-pointer",
+                      !isThisMonth ? "opacity-30" : "",
                       isSelected
                         ? "bg-primary text-primary-foreground font-bold ring-2 ring-primary ring-offset-1"
                         : isToday_
                         ? "ring-1 ring-primary text-primary font-semibold hover:bg-accent"
-                        : count > 0
+                        : !isFuture && count > 0
                         ? `${calDayColor(count)} hover:opacity-80 text-foreground font-medium`
                         : "hover:bg-accent text-foreground",
                     ].join(" ")}
                   >
                     <span>{format(d, "d")}</span>
-                    {count > 0 && !isSelected && (
+                    {/* Completion dot (past) */}
+                    {!isFuture && count > 0 && !isSelected && (
                       <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-primary/70" />
+                    )}
+                    {/* Due-task dot (future) */}
+                    {isFuture && dueCount > 0 && !isSelected && (
+                      <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-blue-400" />
                     )}
                   </button>
                 );
@@ -323,12 +342,19 @@ export default function CalendarPage({ tasks }) {
             </div>
 
             {/* Legend */}
-            <div className="flex items-center gap-1.5 mt-3 pt-3 border-t border-border">
-              <span className="text-xs text-muted-foreground">Less</span>
-              {[0, 1, 2, 3, 4].map((l) => (
-                <div key={l} className={`w-3 h-3 rounded-sm ${l === 0 ? "bg-muted" : `bg-primary/${l === 1 ? 20 : l === 2 ? 40 : l === 3 ? 60 : 80}`}`} />
-              ))}
-              <span className="text-xs text-muted-foreground">More</span>
+            <div className="flex items-center gap-3 mt-3 pt-3 border-t border-border flex-wrap">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-muted-foreground">Completions:</span>
+                <span className="text-xs text-muted-foreground">Less</span>
+                {[0, 1, 2, 3, 4].map((l) => (
+                  <div key={l} className={`w-3 h-3 rounded-sm ${l === 0 ? "bg-muted" : `bg-primary/${l === 1 ? 20 : l === 2 ? 40 : l === 3 ? 60 : 80}`}`} />
+                ))}
+                <span className="text-xs text-muted-foreground">More</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />
+                <span className="text-xs text-muted-foreground">Due tasks</span>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -338,14 +364,18 @@ export default function CalendarPage({ tasks }) {
           <CardHeader className="pb-3">
             <CardTitle className="text-base">{format(selDate, "EEEE, MMMM d")}</CardTitle>
             <CardDescription>
-              {selDayCompleted} completed · {selDayTasks.length - selDayCompleted} pending
+              {isFutureSelected
+                ? `${selDayTasks.length} task${selDayTasks.length !== 1 ? "s" : ""} due`
+                : `${selDayCompleted} completed · ${selDayTasks.length - selDayCompleted} pending`}
             </CardDescription>
           </CardHeader>
           <CardContent>
             {selDayTasks.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-2">
                 <CalendarDays size={32} className="opacity-30" />
-                <p className="text-sm">No tasks on this day</p>
+                <p className="text-sm">
+                  {isFutureSelected ? "No tasks scheduled for this day" : "No tasks on this day"}
+                </p>
               </div>
             ) : (
               <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
@@ -363,6 +393,9 @@ export default function CalendarPage({ tasks }) {
                       <p className={`text-sm font-medium truncate ${task.completed ? "line-through text-muted-foreground" : "text-foreground"}`}>
                         {task.title}
                       </p>
+                      {task.dueTime && (
+                        <p className="text-xs text-blue-500 mt-0.5">{task.dueTime}</p>
+                      )}
                       {task.description && (
                         <p className="text-xs text-muted-foreground truncate">{task.description}</p>
                       )}

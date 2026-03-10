@@ -14,7 +14,7 @@ export function Dialog({ open, onClose, children }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/50"
         onClick={onClose}
       />
       <div className="relative z-10 w-full max-w-lg mx-4">
@@ -27,10 +27,8 @@ export function Dialog({ open, onClose, children }) {
 export function DialogContent({ className, children, onClose }) {
   return (
     <div
-      className={cn(
-        "relative bg-card rounded-xl border border-border shadow-xl p-6",
-        className
-      )}
+      onClick={(e) => e.stopPropagation()}
+      className={cn("relative bg-card rounded-xl border border-border shadow-xl p-6", className)}
     >
       {onClose && (
         <button

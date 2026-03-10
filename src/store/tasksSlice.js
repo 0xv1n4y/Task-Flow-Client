@@ -103,6 +103,8 @@ const tasksSlice = createSlice({
           createdAt: format(new Date(), 'yyyy-MM-dd'),
           completedAt: null,
           completed: false,
+          dueDate: action.meta.arg.taskData.dueDate || null,
+          dueTime: action.meta.arg.taskData.dueTime || null,
         });
       })
       .addCase(addTask.fulfilled, (state, action) => {

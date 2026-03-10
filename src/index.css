@@ -76,3 +76,10 @@
 
 .animate-slide-in  { animation: slide-in  0.3s cubic-bezier(0.16,1,0.3,1) forwards; }
 .animate-slide-out { animation: slide-out 0.25s ease-in forwards; }
+
+/* Make native date/time picker icons visible in dark mode */
+.dark input[type="date"]::-webkit-calendar-picker-indicator,
+.dark input[type="time"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) opacity(0.6);
+  cursor: pointer;
+}

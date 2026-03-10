@@ -279,7 +279,13 @@ function AppShell() {
             </div>
           ) : (
             <>
-              {page === "dashboard" && <Dashboard tasks={tasks} />}
+              {page === "dashboard" && (
+                <Dashboard
+                  tasks={tasks}
+                  onUpdate={handleUpdate}
+                  onToggle={handleToggle}
+                />
+              )}
               {page === "tasks" && (
                 <Tasks
                   tasks={tasks}

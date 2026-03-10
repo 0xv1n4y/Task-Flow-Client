@@ -2,7 +2,6 @@ import { useState, useMemo } from "react";
 import {
   Plus,
   Search,
-  Filter,
   Pencil,
   Trash2,
   CheckCircle2,
@@ -10,11 +9,12 @@ import {
   ChevronDown,
   ChevronUp,
   SlidersHorizontal,
+  CalendarClock,
+  AlertCircle,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/Card";
+import { Card, CardContent } from "./ui/Card";
 import { Button } from "./ui/Button";
 import { Input } from "./ui/Input";
-import { Badge } from "./ui/Badge";
 import { Select } from "./ui/Select";
 import TaskForm from "./TaskForm";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/Dialog";
@@ -32,15 +32,53 @@ const PRIORITY_CONFIG = {
   low: { label: "Low", bg: "bg-green-100", text: "text-green-700", dot: "bg-green-500" },
 };
 
+function formatDueLabel(dueDate, dueTime) {
+  if (!dueDate) return null;
+  const today = new Date().toISOString().slice(0, 10);
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  let label;
+  if (dueDate === today) label = "Today";
+  else if (dueDate === tomorrow) label = "Tomorrow";
+  else {
+    // e.g. "Mar 15"
+    const [y, m, d] = dueDate.split("-");
+    label = new Date(+y, +m - 1, +d).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  }
+  return dueTime ? `${label} at ${dueTime}` : label;
+}
+
+function getDueStatus(dueDate, dueTime, completed) {
+  if (!dueDate || completed) return "none";
+  const now = new Date();
+  const due = dueTime
+    ? new Date(`${dueDate}T${dueTime}`)
+    : new Date(`${dueDate}T23:59:59`);
+  if (due < now) return "overdue";
+  const diffMs = due - now;
+  if (diffMs < 24 * 60 * 60 * 1000) return "soon"; // within 24 h
+  return "upcoming";
+}
+
 function TaskCard({ task, onToggle, onEdit, onDelete }) {
   const cat = CATEGORY_COLORS[task.category] || CATEGORY_COLORS.Work;
   const pri = PRIORITY_CONFIG[task.priority];
+  const dueLabel = formatDueLabel(task.dueDate, task.dueTime);
+  const dueStatus = getDueStatus(task.dueDate, task.dueTime, task.completed);
+
+  const dueBadgeClass =
+    dueStatus === "overdue"
+      ? "text-red-600 bg-red-50 border border-red-200"
+      : dueStatus === "soon"
+      ? "text-amber-600 bg-amber-50 border border-amber-200"
+      : "text-blue-600 bg-blue-50 border border-blue-200";
 
   return (
     <div
       className={`group flex items-start gap-3 p-4 rounded-xl border transition-all duration-200 hover:shadow-md ${
         task.completed
           ? "border-border bg-muted/30 opacity-75"
+          : dueStatus === "overdue"
+          ? "border-red-200 bg-card hover:border-red-300"
           : "border-border bg-card hover:border-primary/30"
       }`}
     >
@@ -57,13 +95,18 @@ function TaskCard({ task, onToggle, onEdit, onDelete }) {
       </button>
 
       <div className="flex-1 min-w-0">
-        <p
-          className={`font-medium text-sm leading-snug ${
-            task.completed ? "line-through text-muted-foreground" : "text-foreground"
-          }`}
-        >
-          {task.title}
-        </p>
+        <div className="flex items-start gap-2">
+          <p
+            className={`font-medium text-sm leading-snug flex-1 ${
+              task.completed ? "line-through text-muted-foreground" : "text-foreground"
+            }`}
+          >
+            {task.title}
+          </p>
+          {dueStatus === "overdue" && !task.completed && (
+            <AlertCircle size={14} className="text-red-500 flex-shrink-0 mt-0.5" />
+          )}
+        </div>
         {task.description && (
           <p className="text-xs text-muted-foreground mt-1 truncate">{task.description}</p>
         )}
@@ -80,6 +123,14 @@ function TaskCard({ task, onToggle, onEdit, onDelete }) {
             <span className={`w-1.5 h-1.5 rounded-full ${pri.dot}`} />
             {pri.label}
           </span>
+          {dueLabel && (
+            <span
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${dueBadgeClass}`}
+            >
+              <CalendarClock size={11} />
+              {dueLabel}
+            </span>
+          )}
           <span className="text-xs text-muted-foreground ml-auto">{task.createdAt}</span>
         </div>
       </div>
@@ -136,6 +187,15 @@ export default function Tasks({ tasks, onAdd, onUpdate, onDelete, onToggle }) {
     if (filterStatus === "pending") result = result.filter((t) => !t.completed);
 
     result.sort((a, b) => {
+      if (sortBy === "due") {
+        // Tasks with no due date go to the bottom
+        if (!a.dueDate && !b.dueDate) return 0;
+        if (!a.dueDate) return 1;
+        if (!b.dueDate) return -1;
+        const cmp = a.dueDate.localeCompare(b.dueDate);
+        if (cmp !== 0) return cmp;
+        return (a.dueTime || "").localeCompare(b.dueTime || "");
+      }
       if (sortBy === "date") return b.createdAt.localeCompare(a.createdAt);
       if (sortBy === "priority") {
         const order = { high: 0, medium: 1, low: 2 };
@@ -150,6 +210,9 @@ export default function Tasks({ tasks, onAdd, onUpdate, onDelete, onToggle }) {
 
   const completedCount = filtered.filter((t) => t.completed).length;
   const pendingCount = filtered.length - completedCount;
+  const overdueCount = tasks.filter(
+    (t) => !t.completed && getDueStatus(t.dueDate, t.dueTime, t.completed) === "overdue"
+  ).length;
 
   const handleEdit = (task) => {
     setEditTask(task);
@@ -185,6 +248,9 @@ export default function Tasks({ tasks, onAdd, onUpdate, onDelete, onToggle }) {
           <h1 className="text-2xl font-bold text-foreground">My Tasks</h1>
           <p className="text-sm text-muted-foreground mt-1">
             {completedCount} done · {pendingCount} remaining
+            {overdueCount > 0 && (
+              <span className="ml-2 text-red-500 font-medium">· {overdueCount} overdue</span>
+            )}
           </p>
         </div>
         <Button onClick={() => { setEditTask(null); setFormOpen(true); }} className="gap-2">
@@ -250,6 +316,7 @@ export default function Tasks({ tasks, onAdd, onUpdate, onDelete, onToggle }) {
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">Sort By</label>
                 <Select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
                   <option value="date">Newest First</option>
+                  <option value="due">Due Date</option>
                   <option value="priority">Priority</option>
                   <option value="title">Title A-Z</option>
                 </Select>
